@@ -8,7 +8,8 @@
 
 ### 主な機能
 
-- **単一テキストの簡単分析**: サンプルテキストでのデモ実行
+- **統一処理エンジン**: 短文・長文を自動判定して最適処理
+- **長文対応**: チャンク分割による長文書の完全解析
 - **バッチ処理**: 複数ファイル・ディレクトリの一括分析
 - **詳細レポート**: CSV出力、統計分析、可視化グラフ生成
 - **対応形式**: テキストファイル（.txt）、JSONファイル（.json）
@@ -21,16 +22,17 @@
 
 ## 抽出可能な固有表現タイプ
 
-| タグ | 説明 |
-|------|------|
-| PER | 人名 |
-| ORG | 一般企業・組織 |
-| ORG-P | 政治組織 |
-| ORG-O | その他の組織 |
-| LOC | 場所・地名 |
-| INS | 施設・機関 |
-| PRD | 製品 |
-| EVT | イベント |
+| Label ID | Tag | Widget Tag | Description |
+|----------|-----|------------|-------------|
+| 0 | O | (None) | others or nothing |
+| 1 | PER | PER | person |
+| 2 | ORG | ORG | general corporation organization |
+| 3 | ORG-P | P | political organization |
+| 4 | ORG-O | O | other organization |
+| 5 | LOC | LOC | location |
+| 6 | INS | INS | institution, facility |
+| 7 | PRD | PRD | product |
+| 8 | EVT | EVT | event |
 
 ## セットアップ
 
@@ -61,29 +63,30 @@ make install-dev
 
 ## 使用方法
 
-### 1. 簡単なデモ実行
+### 1. デフォルト実行（デモ）
 
 ```bash
 python main.py
-# または
-python main.py --demo
 ```
 
-サンプルテキスト（経済産業省のGENIAC事業に関する文章）から固有表現を抽出し、結果をコンソールに表示します。
+`demo/sample_text.txt`のサンプルテキスト（経済産業省のGENIAC事業に関する文章）から固有表現を抽出し、完全なレポートを生成します。
 
 #### 出力例
 
 ```
-Running simple NER demo with sample text...
-============================================================
-社会実装 (PRD): score=0.9845
-GENIAC (ORG): score=0.9921
-東京 (LOC): score=0.9876
-九段会館 (INS): score=0.9654
-渡辺 琢也 (PER): score=0.9832
-...
-============================================================
-Found 45 entities in total
+Reading documents from: demo
+Found 1 documents
+Analyzing: sample_text.txt
+Generating statistics...
+CSV saved to: output/ner_results.csv
+Creating visualizations...
+Generating report...
+Report saved to: output/analysis_report.md
+
+Analysis complete! Results saved to: output
+- CSV: output/ner_results.csv
+- Report: output/analysis_report.md
+- Visualizations: output/*.png
 ```
 
 ### 2. バッチ処理
@@ -115,12 +118,12 @@ python main.py documents/ -m "other-model-name"
 ### 3. コマンドラインオプション
 
 ```
-usage: main.py [-h] [-o OUTPUT] [-m MODEL] [--demo] [input_path]
+usage: main.py [-h] [-o OUTPUT] [-m MODEL] [input_path]
 
 日本語固有表現抽出ツール
 
 positional arguments:
-  input_path            入力ファイルまたはディレクトリのパス（省略時はデモ実行）
+  input_path            入力ファイルまたはディレクトリのパス（デフォルト: demo）
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -128,7 +131,6 @@ optional arguments:
                         出力ディレクトリ (デフォルト: output)
   -m MODEL, --model MODEL
                         NERモデル名
-  --demo                簡単なデモを実行
 ```
 
 ## 出力ファイル
@@ -139,8 +141,9 @@ optional arguments:
 
 ```csv
 filename,word,entity_type,entity_description,score,start_pos,end_pos,analysis_time
-document1.txt,東京,LOC,場所・地名,0.9876,23,25,2025-08-16T10:30:45.123456
-document1.txt,GENIAC,ORG,一般企業・組織,0.9921,30,36,2025-08-16T10:30:45.123456
+sample_text.txt,AWS,ORG,general corporation organization,0.9979,384,387,2025-08-16T21:29:38.807819
+sample_text.txt,有馬 幸介,PER,person,0.9994,1764,1769,2025-08-16T21:29:38.807819
+sample_text.txt,経済産業省,P,political organization,0.9988,24,29,2025-08-16T21:29:38.807819
 ```
 
 ### 2. 分析レポート (`analysis_report.md`)
@@ -194,12 +197,15 @@ japanese-ner-transformer/
 ### 主要クラスとモジュール
 
 #### `NERAnalyzer` クラス (analyzer.py)
-- `analyze(text)`: 単一テキストの固有表現抽出
-- `get_entity_types()`: サポートされている固有表現タイプの取得
-
-#### `BatchNERAnalyzer` クラス (batch_analyzer.py)
+- `analyze(text)`: 単一テキストの固有表現抽出（長文自動対応）
 - `analyze_documents(input_path)`: 複数ドキュメントの一括分析
 - `generate_full_report(input_path, output_dir)`: 完全な分析レポート生成
+- `get_entity_types()`: サポートされている固有表現タイプの取得
+
+#### 長文処理機能
+- **自動判定**: 400トークン超の長文を自動検出
+- **チャンク分割**: 重複付きで最適分割
+- **重複除去**: エンティティの統合処理
 
 #### ユーティリティモジュール
 - **utils.py**: ファイル読み込み、ディレクトリ処理
@@ -210,27 +216,31 @@ japanese-ner-transformer/
 
 ### 独自テキストでの簡単分析
 
-`main.py`の`simple_ner_demo()`関数内の`text`変数を変更：
+`demo/sample_text.txt`ファイルを編集するか、新しいファイルを作成：
 
-```python
-text = """あなたの解析したいテキストをここに入力"""
+```bash
+echo "あなたの解析したいテキスト" > my_text.txt
+python main.py my_text.txt
 ```
 
 ### プログラムからの使用
 
 ```python
-from src.japanese_ner import NERAnalyzer, BatchNERAnalyzer
+from src.japanese_ner import NERAnalyzer
 
-# 単一テキスト分析
+# 単一テキスト分析（長文自動対応）
 analyzer = NERAnalyzer()
 entities = analyzer.analyze("分析したいテキスト")
 
 # バッチ処理
-batch_analyzer = BatchNERAnalyzer()
-batch_analyzer.generate_full_report("input_directory/", "output_directory/")
+analyzer.generate_full_report("input_directory/", "output_directory/")
 
 # 異なるモデルの使用
 custom_analyzer = NERAnalyzer("other-model-name")
+
+# 長文テキストの処理例
+long_text = """長い文書コンテンツ..."""
+entities = analyzer.analyze(long_text)  # 自動的にチャンク処理
 ```
 
 ## テスト
