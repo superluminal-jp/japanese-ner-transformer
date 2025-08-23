@@ -5,6 +5,7 @@ Core NER analysis functionality.
 from typing import List, Dict, Any
 from datetime import datetime
 from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
+from .logger import get_logger
 
 
 class NERAnalyzer:
@@ -20,6 +21,7 @@ class NERAnalyzer:
             model_name: Name of the pre-trained NER model to use
         """
         self.model_name = model_name
+        self.logger = get_logger("analyzer")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForTokenClassification.from_pretrained(model_name)
         self.ner = pipeline(
@@ -74,10 +76,13 @@ class NERAnalyzer:
             return entities
         else:
             # Long text: use chunking strategy
+            self.logger.info(f"Long text detected ({len(tokens)} tokens) - Starting chunking process")
             chunks = self._split_text_into_chunks(text)
+            self.logger.info(f"Text split into {len(chunks)} chunks")
             all_entities = []
             
-            for chunk in chunks:
+            for i, chunk in enumerate(chunks, 1):
+                self.logger.info(f"Processing chunk {i}/{len(chunks)}...")
                 chunk_entities = self.ner(chunk["text"])
                 
                 # Adjust entity positions to global coordinates
@@ -91,9 +96,14 @@ class NERAnalyzer:
                         'description': self.entity_descriptions.get(entity['entity_group'], '不明')
                     }
                     all_entities.append(adjusted_entity)
+                
+                self.logger.debug(f"Extracted {len(chunk_entities)} entities from chunk {i}")
             
             # Merge overlapping entities
-            return self._merge_overlapping_entities(all_entities)
+            self.logger.info(f"Merging overlapping entities...")
+            merged_entities = self._merge_overlapping_entities(all_entities)
+            self.logger.info(f"Chunking complete: Total {len(merged_entities)} entities")
+            return merged_entities
 
     def get_entity_types(self) -> Dict[str, str]:
         """
@@ -179,75 +189,4 @@ class NERAnalyzer:
                 
         return merged
 
-    def analyze_documents(self, input_path: str) -> List[Dict[str, Any]]:
-        """
-        Analyze multiple documents from file or directory.
-        
-        Args:
-            input_path: Path to input file or directory
-            
-        Returns:
-            List of analysis results
-        """
-        from .utils import read_documents
-        
-        documents = read_documents(input_path)
-        results = []
-        
-        print(f"Found {len(documents)} documents")
-        
-        for doc in documents:
-            print(f"Analyzing: {doc['filename']}")
-            
-            entities = self.analyze(doc['content'])
-            
-            results.append({
-                'filename': doc['filename'],
-                'content': doc['content'],
-                'entities': entities,
-                'entity_count': len(entities),
-                'analysis_time': datetime.now().isoformat()
-            })
-            
-        return results
-
-    def generate_full_report(self, input_path: str, output_dir: str):
-        """
-        Perform complete batch analysis with all outputs.
-        
-        Args:
-            input_path: Path to input documents
-            output_dir: Directory for output files
-        """
-        from .utils import ensure_output_directory
-        from .report import calculate_statistics, save_csv_report, save_markdown_report
-        from .visualization import create_all_visualizations
-        
-        output_path = ensure_output_directory(output_dir)
-        
-        # Analyze documents
-        print(f"Reading documents from: {input_path}")
-        results = self.analyze_documents(input_path)
-        
-        # Generate statistics
-        print("Generating statistics...")
-        stats = calculate_statistics(results)
-        
-        # Save CSV report
-        csv_path = output_path / 'ner_results.csv'
-        save_csv_report(results, str(csv_path), self.entity_descriptions)
-        
-        # Create visualizations
-        print("Creating visualizations...")
-        create_all_visualizations(stats, str(output_path))
-        
-        # Generate markdown report
-        print("Generating report...")
-        report_path = output_path / 'analysis_report.md'
-        save_markdown_report(stats, str(report_path), self.model_name, self.entity_descriptions)
-        
-        print(f"\nAnalysis complete! Results saved to: {output_path}")
-        print(f"- CSV: {csv_path}")
-        print(f"- Report: {report_path}")
-        print(f"- Visualizations: {output_path}/*.png")
 

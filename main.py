@@ -12,9 +12,7 @@ from pathlib import Path
 # Add src to Python path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from japanese_ner import NERAnalyzer
-
-
+from japanese_ner.batch_analyzer import BatchNERAnalyzer
 
 
 def batch_ner_analysis(input_path: str, output_dir: str, model_name: str):
@@ -26,7 +24,7 @@ def batch_ner_analysis(input_path: str, output_dir: str, model_name: str):
         output_dir: Output directory for results
         model_name: Name of the NER model to use
     """
-    analyzer = NERAnalyzer(model_name)
+    analyzer = BatchNERAnalyzer(model_name)
     analyzer.generate_full_report(input_path, output_dir)
 
 
